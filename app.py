@@ -50,23 +50,26 @@ def get_eda(dataset):
             continue
             
         # Distribución de Creditos por Columna
-        trace0 = go.Bar(
-            x=dataset[dataset["risk"] == 'good'][col].value_counts().index.values,
-            y=dataset[dataset["risk"] == 'good'][col].value_counts().values,
-            name='Good credit'
-        )
+        try:
+            trace0 = go.Bar(
+                x=dataset[dataset["risk"] == 'good'][col].value_counts().index.values,
+                y=dataset[dataset["risk"] == 'good'][col].value_counts().values,
+                name='Good credit'
+            )
 
-        trace1 = go.Bar(
-            x=dataset[dataset["risk"] == 'bad'][col].value_counts().index.values,
-            y=dataset[dataset["risk"] == 'bad'][col].value_counts().values,
-            name="Bad Credit"
-        )
+            trace1 = go.Bar(
+                x=dataset[dataset["risk"] == 'bad'][col].value_counts().index.values,
+                y=dataset[dataset["risk"] == 'bad'][col].value_counts().values,
+                name="Bad Credit"
+            )
 
-        data = [trace0, trace1]
+            data = [trace0, trace1]
 
-        layout = go.Layout(title=title)
-        fig = go.Figure(data=data, layout=layout)
-        st.plotly_chart(fig, use_container_width=True)
+            layout = go.Layout(title=title)
+            fig = go.Figure(data=data, layout=layout)
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"Error al generar gráfico para la columna {col}: {e}")
 
 
 def feature_engineering(dataset):
@@ -113,14 +116,19 @@ def modelling(dataset):
     df = dataset.copy()
     
     # aplicamos una funcion logaritmo para ajustar los valores
-    df['credit amount'] = np.log(df['credit amount'])
+    # Asegurarse de que el nombre de la columna es correcto
+    if 'credit amount' in df.columns:
+        df['credit amount'] = np.log(df['credit amount'])
 
     # separamos la variable objetivo (y) de las variables predictoras (X)
-    X = df.drop('Risk_bad', axis=1).values
+    X = df.drop('Risk_bad', axis=1) # Mantenemos como DataFrame para obtener los nombres de las columnas
     y = df['Risk_bad'].values
     
+    # Guardamos los nombres de las características para usarlas en la predicción
+    feature_names = X.columns.tolist()
+
     # Spliting X and y into train and test version
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X.values, y, test_size=0.30, random_state=42)
 
     # Prepapar los modelos
     models = []
@@ -156,7 +164,8 @@ def modelling(dataset):
     fig.update_layout(title_text='Comparación de Modelos por Recall', yaxis_title='Recall Score')
     st.plotly_chart(fig, use_container_width=True)
     
-    return X_train, X_test, y_train, y_test
+    # Devolvemos también los nombres de las características
+    return X_train, X_test, y_train, y_test, feature_names
 
 
 # --- Funciones de Redes Neuronales ---
@@ -179,11 +188,15 @@ def nn_model(learning_rate, y_train_categorical, X_train):
 
     # Compile the network :
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    # Se usa 'binary_crossentropy' aunque la salida sea 2 clases, debido al uso de 'sigmoid' y el one-hot encoding.
+    # Se usa 'binary_crossentropy' debido a la salida de 2 clases con one-hot encoding
     NN_model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
     
     st.text("Resumen del Modelo de Red Neuronal:")
-    NN_model.summary(print_fn=lambda x: st.text(x))
+    # Usar una función lambda o un StringIO para capturar el resumen y mostrarlo
+    import io
+    buffer = io.StringIO()
+    NN_model.summary(print_fn=lambda x: buffer.write(x + '\n'))
+    st.text(buffer.getvalue())
     
     return NN_model
 
@@ -191,8 +204,7 @@ def TrainningNN(X_train, X_test, y_train, y_test):
     """Entrena la Red Neuronal y evalúa los resultados."""
     
     # 1. Preparación de Datos
-    # Convertir X_train a numpy array de tipo float32 (¡La clave para el error!)
-    # Esto asegura la compatibilidad con Keras/TensorFlow.
+    # Convertir X_train a numpy array de tipo float32
     X_train = np.array(X_train, dtype=np.float32)
     X_test = np.array(X_test, dtype=np.float32)
     
@@ -238,226 +250,172 @@ def TrainningNN(X_train, X_test, y_train, y_test):
     
     return NN_model
 
-def predictionForm(modelNN):
+def predictionForm():
+    """Formulario de entrada de datos para la predicción."""
+    # Asegurarse de que el modelo y las features estén disponibles
+    if 'NN_model' not in st.session_state or st.session_state['NN_model'] is None:
+        st.warning("El modelo de Red Neuronal no está entrenado. Por favor, ejecute la sección 'Neural Network'.")
+        return
+    if 'feature_names' not in st.session_state:
+        st.warning("Los nombres de las características de entrenamiento no están disponibles. Por favor, ejecute la sección 'Modelado'.")
+        return
+    
+    # Opciones de categorías (corregidas para ser más completas)
     option_sex = ['male', 'female']
-    option_job = [0,1,2,3]
-    option_housing = ['own', 'rent']
-    option_saving = ['moderate', 'quite rich', 'rich','little']
-    option_checking = ['moderate', 'rich','little']
-    option_duration = [6,7,8,9,10,11,12,15,18,24,27,30,36,42,45,48,60]
+    option_job = [0, 1, 2, 3] # La variable job es numérica/ordinal
+    option_housing = ['own', 'rent', 'free'] # 'free' es otra categoría común
+    # Incluimos 'no_inf' ya que se usa para rellenar NaNs en feature_engineering
+    option_saving = ['moderate', 'quite rich', 'rich', 'little', 'no_inf'] 
+    option_checking = ['moderate', 'rich', 'little', 'no_inf'] 
+    option_duration = [6, 7, 8, 9, 10, 11, 12, 15, 18, 24, 27, 30, 36, 42, 45, 48, 60]
     option_purpose = ['radio/TV', 'education', 'furniture/equipment', 'car',
-       'domestic appliances', 'repairs', 'vacation/others']
+        'domestic appliances', 'repairs', 'vacation/others']
 
-    age = st.text_input('Edad')
-    select_sex = st.selectbox('Género', option_sex)
-    select_job = st.selectbox('Trabajo', option_job)
-    select_housing = st.selectbox('Vivienda', option_housing)
-    select_saving = st.selectbox('Cuenta de Ahorro', option_saving)
-    select_checking = st.selectbox('Cuenta de Crédito', option_checking)
-    credit_amount = st.text_input('Monto del Crédito')
-    select_duration = st.selectbox('Duración', option_duration)
-    select_purpose = st.selectbox('Propósito', option_purpose)
-
-    if st.button('Enviar'):
-        prediction(age,select_sex,select_job,select_housing,select_saving,select_checking,credit_amount, select_duration, select_purpose)    
+    st.markdown("Ingrese los detalles del cliente para predecir el riesgo crediticio:")
     
-def prediction(age,sex,job,housing,saving,checking,amount,duration,purpose):
-    # Crear dataframe
-    data = {
-        "age": [age], 
-        "sex": [sex], 
-        "job": [job],
-        "housing": [housing], 
-        "saving_accounts": [saving],
-        "checking_account": [checking], 
-        "credit_amount": [amount], 
-        "duration": [duration], 
-        "purpose": [purpose]
-    }
-
-    dataset = pd.DataFrame(data)
-    datasetNew = dataset.copy()
-
-
-    # ============ featuring para el dataset a predecir  ============
+    with st.form("prediction_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            age = st.number_input('Edad', min_value=18, max_value=120, value=30, step=1)
+            select_sex = st.selectbox('Género', option_sex)
+            select_housing = st.selectbox('Vivienda', option_housing)
+            # Nota: la columna original se llama 'checking account'
+            select_checking = st.selectbox('Cuenta de Crédito', option_checking) 
+            select_duration = st.selectbox('Duración (meses)', option_duration)
+        with col2:
+            select_job = st.selectbox('Trabajo', option_job)
+            select_saving = st.selectbox('Cuenta de Ahorro', option_saving)
+            # Nota: la columna original se llama 'credit amount'
+            credit_amount = st.number_input('Monto del Crédito', min_value=100, max_value=20000, value=4000, step=100) 
+            select_purpose = st.selectbox('Propósito', option_purpose)
+        
+        submitted = st.form_submit_button('Predecir Riesgo')
+        
+        if submitted:
+            # Recuperar el modelo y los nombres de las features de session state
+            modelNN = st.session_state['NN_model']
+            feature_names = st.session_state['feature_names']
+            
+            prediction(age, select_sex, select_job, select_housing, select_saving, select_checking, credit_amount, select_duration, select_purpose, modelNN, feature_names)
     
-    #asignar categorias por edad
-    if int(age) >= 18 and int(age) <= 25:
-        Age_cat='Student'
-    elif int(age) >= 28 and int(age) <= 35:
-        Age_cat='Young'
-    elif int(age) >= 35 and int(age) <= 60:
-        Age_cat='Adult'
-    else:
-        Age_cat='Senior'
-    datasetNew['Age_cat'] = Age_cat
-    
-  #asignar el proposito del crédito
-    purpose_car=0
-    purpose_domestic=0
-    purpose_education=0
-    purpose_furniture=0
-    purpose_radio=0
-    purpose_repairs=0
-    purpose_vacation=0
-    if purpose ==  "radio/TV":
-        purpose_radio = 1
-    elif purpose ==  "education":
-        purpose_education = 1
-    elif purpose ==  "furniture/equipment":
-        purpose_furniture = 1
-    elif purpose ==  "car":
-        purpose_car = 1
-    elif purpose ==  "vacation/others":
-        purpose_vacation = 1
-    elif purpose ==  "domestic appliances":
-        purpose_domestic = 1
-    else:
-        purpose_repairs = 1
-    dataPurpose = {
-        "purpose_car":[purpose_car],
-        "purpose_domestic appliances":[purpose_domestic], 
-        "purpose_education":[purpose_education],
-        "purpose_furniture/equipment":[purpose_furniture], 
-        "purpose_radio/TV":[purpose_radio], 
-        "purpose_repairs":[purpose_repairs],
-        "purpose_vacation/others":[purpose_vacation]
-    }
-    dataPurpose = pd.DataFrame(dataPurpose)
-    datasetNew = pd.concat([datasetNew, dataPurpose], axis=1)  
-    
-    #asignar genero
-    Sex_female=0
-    Sex_male=0
-    if sex == "female":
-        Sex_female=1
-    else:
-        Sex_male=1
-    dataGender = {
-        "Sex_female":[Sex_female],
-        "Sex_male":[Sex_male]
-    }    
-    dataGender = pd.DataFrame(dataGender)
-    datasetNew = pd.concat([datasetNew, dataGender], axis=1)
-    
-    #asignar vivienda
-    Housing_own=0
-    Housing_rent=0
-    if housing == "own":
-        Housing_own=1
-    else:
-        Housing_rent=1
-    dataHousing = {
-        "Housing_own":[Housing_own],
-        "Housing_rent":[Housing_rent]
-    }    
-    dataHousing = pd.DataFrame(dataHousing)
-    datasetNew = pd.concat([datasetNew, dataHousing], axis=1)
+def prediction(age, sex, job, housing, saving, checking, amount, duration, purpose, modelNN, feature_names):
+    """
+    Prepara la entrada de datos del usuario, la transforma para que coincida con 
+    el entrenamiento y realiza la predicción con el modelo NN.
+    """
+    try:
+        # 1. Crear el DataFrame de entrada con datos crudos (con nombres originales de columnas)
+        data = {
+            "age": [age], 
+            "sex": [sex], 
+            "job": [job],
+            "housing": [housing], 
+            "saving_accounts": [saving],
+            "checking account": [checking], 
+            "credit amount": [amount], 
+            "duration": [duration], 
+            "purpose": [purpose]
+        }
 
-    #asignar Cuenta de Ahorros
-    Savings_moderate=0
-    Savings_no_inf=0
-    Savings_quite=0 
-    Savings_rich=0
-    if saving == "moderate":
-        Savings_moderate=1
-    elif saving == "quite rich":
-        Savings_quite=1
-    elif saving == "rich":
-        Savings_rich=1
-    else:
-        Savings_no_inf=1
-    dataSaving = {
-        "Savings_moderate":[Savings_moderate],
-        "Savings_no_inf":[Savings_no_inf],
-        "Savings_quite rich":[Savings_quite],
-        "Savings_rich":[Savings_rich]
-    }    
-    dataSaving = pd.DataFrame(dataSaving)
-    datasetNew = pd.concat([datasetNew, dataSaving], axis=1)   
-  
-    #asignar Cuenta de Credito 
-    Check_moderate=0
-    Check_no_inf=0 
-    Check_rich=0
-    if checking == "moderate":
-        Check_moderate=1
-    elif checking == "rich":
-        Check_rich=1
-    else:
-        Check_no_inf=1
-    dataChecking = {
-        "Check_moderate":[Check_moderate],
-        "Check_no_inf":[Check_no_inf],
-        "Check_rich":[Check_rich]
-    }    
-    dataChecking = pd.DataFrame(dataChecking)
-    datasetNew = pd.concat([datasetNew, dataChecking], axis=1)   
+        df_user = pd.DataFrame(data)
+        
+        # Aplicamos logaritmo al monto del crédito, igual que en el entrenamiento
+        df_user['credit amount'] = np.log(df_user['credit amount'])
 
-    #asignar categoria edad 
-    Age_cat_Student=0
-    Age_cat_Young=0
-    Age_cat_Adult=0
-    Age_cat_Senior=0
-    if Age_cat == "Student":
-        Age_cat_Student=1
-    elif Age_cat == "Young":
-        Age_cat_Young=1
-    elif Age_cat == "Adult":
-        Age_cat_Adult ==1
-    else:
-        Age_cat_Senior=1
-    dataCatAge = {
-        "Age_cat_Student":[Age_cat_Student], 
-        "Age_cat_Young":[Age_cat_Young],
-        "Age_cat_Adult":[Age_cat_Adult], 
-        "Age_cat_Senior":[Age_cat_Senior]
-    }    
-    dataCatAge = pd.DataFrame(dataCatAge)
-    datasetNew = pd.concat([datasetNew, dataCatAge], axis=1) 
-    #eliminar columnas 
-    del datasetNew["saving_accounts"]
-    del datasetNew["checking_account"]
-    del datasetNew["purpose"]
-    del datasetNew["sex"]
-    del datasetNew["housing"]
-    del datasetNew["Age_cat"]
-    #aplicamos una funcion logaritmo para ajustar los valores
-    datasetNew['credit_amount'] = np.log(int(datasetNew['credit_amount']))
-    #convertir variables a numpy
-    X_values = datasetNew.values
-    X_predict = X_values.astype(float)
+        # 2. Replicar el Feature Engineering
+        
+        # A. Categoría de Edad
+        interval = (18, 25, 35, 60, 120)
+        cats = ['Student', 'Young', 'Adult', 'Senior']
+        # pd.cut usa el rango, y .astype(str) lo convierte a la etiqueta para dummies
+        df_user['Age_cat'] = pd.cut(df_user['age'], interval, labels=cats, right=False).astype(str)
+        
+        # B. Aplicar One-Hot Encoding
+        cols_to_dummy = ["purpose", "sex", "housing", "saving_accounts", "checking account", "Age_cat"]
+        
+        # Crear Dummies (igual que en feature_engineering: drop_first=True)
+        df_dummies = pd.get_dummies(df_user[cols_to_dummy], drop_first=True, prefix={
+            "purpose": "purpose", 
+            "sex": "Sex", 
+            "housing": "Housing", 
+            "saving_accounts": "Savings", 
+            "checking account": "Check", 
+            "Age_cat": "Age_cat"
+        })
+        
+        # C. Limpieza del DataFrame de Usuario
+        # Eliminar las columnas categóricas originales y 'age' original (ya usada para Age_cat)
+        # Ojo: 'age' y 'job' se mantienen como numéricas. Solo eliminamos las columnas que se convirtieron a dummies.
+        cols_to_drop_from_base = cols_to_dummy
+        df_processed = df_user.drop(columns=cols_to_drop_from_base)
+        
+        # D. Combinar numéricos y dummies
+        df_processed = pd.concat([df_processed, df_dummies], axis=1)
 
-    # Mostrar prediccion
-    st.write("### Predicción del Crédito")
-    # Mostrar dataframe
-    st.write(dataset)
-    # Calcular Prediccion
-    valuePredict = modelNN.predict(X_predict)
-    st.write(valuePredict)
-    
-    if valuePredict[0][0] > valuePredict[0][1]:
-        st.write("#### Crédito Malo")
-    else:
-        st.write("#### Crédito Bueno")
+        # 3. Normalizar y Ordenar las Features (¡La Corrección Clave!)
+        
+        # Crear un DataFrame de todas las características esperadas inicializadas a 0
+        # Esto garantiza que TODAS las features de entrenamiento existan y estén en orden
+        X_predict_final = pd.DataFrame(0.0, index=[0], columns=feature_names)
+        
+        # Actualizar las columnas con los valores calculados
+        # Usamos .columns.intersection para solo copiar las columnas que realmente existen
+        cols_to_update = df_processed.columns.intersection(X_predict_final.columns)
+        
+        for col in cols_to_update:
+            # Asegurar que el tipo de dato sea float para la red neuronal
+            X_predict_final.loc[0, col] = df_processed.loc[0, col]
+            
+        # El vector final de predicción (en el orden correcto)
+        # ¡IMPORTANTE! Asegurar el dtype correcto (float32)
+        X_predict_values = X_predict_final.values.astype(np.float32)
+
+        # 4. Mostrar predicción
+        st.write("### Resultado de la Predicción")
+        st.write("Vector de Features (Ordenado para el Modelo):")
+        st.dataframe(X_predict_final)
+
+        # Calcular Prediccion
+        valuePredict = modelNN.predict(X_predict_values, verbose=0)
+        
+        # valuePredict es un array de probabilidades, ej: [[Prob_Good, Prob_Bad]]
+        prob_good = valuePredict[0][0]
+        prob_bad = valuePredict[0][1]
+
+        st.markdown(f"**Probabilidad de Crédito Bueno (Clase 0):** `{prob_good:.4f}`")
+        st.markdown(f"**Probabilidad de Crédito Malo (Clase 1):** `{prob_bad:.4f}`")
+        
+        if prob_bad > prob_good:
+            st.error("#### 🚫 Predicción del Modelo: CRÉDITO MALO")
+        else:
+            st.success("#### ✅ Predicción del Modelo: CRÉDITO BUENO")
+            
+    except Exception as e:
+        st.error(f"Ocurrió un error durante la predicción: {e}")
+        st.warning("Asegúrese de que todos los campos del formulario sean válidos (ej: Monto de Crédito debe ser un número).")
 
 
 # --- Aplicación Principal de Streamlit ---
 
-st.title("Credit Card App")
+st.title("Credit Card Risk Prediction App")
 
 # Inicialización de Session State para persistir datos
 if 'dataset' not in st.session_state:
     st.session_state['dataset'] = None
 if 'X_train' not in st.session_state:
     st.session_state['X_train'] = None
+# Nuevos estados para la predicción
+if 'NN_model' not in st.session_state:
+    st.session_state['NN_model'] = None
+if 'feature_names' not in st.session_state:
+    st.session_state['feature_names'] = None
 
 
 # Definir las opciones de página
 pages = ["Cargar Datos", "Explorar Datos", "Feature Engineering", "Modelado", "Neural Network", "Prediccion"]
 
 # Mostrar un menú para seleccionar la página
-selected_page = st.sidebar.multiselect("Seleccione una página", pages)
+selected_page = st.sidebar.multiselect("Seleccione una página", pages, default=["Cargar Datos"]) # Default to Cargar Datos
 
 # Condicionales para mostrar la página seleccionada
 if "Cargar Datos" in selected_page:
@@ -465,9 +423,7 @@ if "Cargar Datos" in selected_page:
     # Cargar archivo CSV usando file uploader
     uploaded_file = st.file_uploader("Cargar archivo CSV", type=["csv"])
     
-    # Si el archivo se cargó correctamente
     if uploaded_file is not None:
-        # Leer archivo CSV usando Pandas y almacenarlo en session_state
         st.session_state['dataset'] = pd.read_csv(uploaded_file)
         st.subheader("Vista Previa de Datos Originales")
         st.dataframe(st.session_state['dataset'].head())
@@ -478,7 +434,6 @@ if "Cargar Datos" in selected_page:
 if "Explorar Datos" in selected_page:
     if st.session_state['dataset'] is not None:
         st.header("Explorar Datos")
-        # Usar una copia para el EDA para no modificar el original
         get_eda(st.session_state['dataset'].copy())
     else:
         st.warning("⚠️ Por favor, cargue los datos en la sección 'Cargar Datos' primero.")
@@ -488,7 +443,6 @@ if "Feature Engineering" in selected_page:
         st.header("Feature Engineering")
         st.write("Aplicando transformaciones y codificación One-Hot...")
         
-        # Aplicar Feature Engineering y actualizar el dataset en session_state
         processed_dataset = feature_engineering(st.session_state['dataset'].copy())
         st.session_state['dataset_processed'] = processed_dataset
         
@@ -502,13 +456,15 @@ if "Modelado" in selected_page:
     if 'dataset_processed' in st.session_state and st.session_state['dataset_processed'] is not None:
         st.header("Entrenamiento con Modelos Clásicos")
         
-        X_train, X_test, y_train, y_test = modelling(st.session_state['dataset_processed'].copy())
+        # --- CORRECCIÓN CLAVE: Capturar los nombres de las features ---
+        X_train, X_test, y_train, y_test, feature_names = modelling(st.session_state['dataset_processed'].copy())
         
-        # Almacenar los splits de datos en session_state
+        # Almacenar los splits de datos en session_state y los nombres de las features
         st.session_state['X_train'] = X_train
         st.session_state['X_test'] = X_test
         st.session_state['y_train'] = y_train
         st.session_state['y_test'] = y_test
+        st.session_state['feature_names'] = feature_names # <<< Almacenado
         
         st.success("✅ Splits de datos de entrenamiento y prueba almacenados para la Red Neuronal.")
 
@@ -521,13 +477,11 @@ if "Neural Network" in selected_page:
     if st.session_state['X_train'] is not None:
         st.write(f"TensorFlow Version: {tf.__version__}")
         
-        # Recuperar los datos de session_state
         X_train = st.session_state['X_train']
         X_test = st.session_state['X_test']
         y_train = st.session_state['y_train']
         y_test = st.session_state['y_test']
         
-        # Llamar a la función con las correcciones de dtype
         modelNN = TrainningNN(X_train, X_test, y_train, y_test)
         st.session_state['NN_model'] = modelNN
         
@@ -535,8 +489,12 @@ if "Neural Network" in selected_page:
         st.warning("⚠️ Por favor, ejecute el paso **Modelado** primero para preparar los datos de entrenamiento.")
 
 if "Prediccion" in selected_page:
+    # Comprobar que el modelo y las features estén en session_state
     if 'NN_model' in st.session_state and st.session_state['NN_model'] is not None:
-        st.header("Prediccion (Usando el Modelo NN)")
-        predictionForm(modelNN)
+        if 'feature_names' in st.session_state and st.session_state['feature_names'] is not None:
+            st.header("Prediccion (Usando el Modelo NN)")
+            predictionForm() # Llamar sin argumentos
+        else:
+            st.warning("⚠️ Los nombres de las características no están cargados. Ejecute 'Modelado' primero.")
     else:
         st.warning("⚠️ Por favor, entrene la Red Neuronal en la sección 'Neural Network' primero.")
