@@ -169,6 +169,48 @@ def get_eda(dataset):
 
     st.plotly_chart(fig)
 
+#crear una funcion para aplicar dummies 
+def one_hot_encoder(df, nan_as_category = False):
+    original_columns = list(df.columns)
+    categorical_columns = [col for col in df.columns if df[col].dtype == 'object']
+    df = pd.get_dummies(df, columns= categorical_columns, dummy_na= nan_as_category, drop_first=True)
+    new_columns = [c for c in df.columns if c not in original_columns]
+    return df, new_columns
+
+
+def feature_engineering(dataset):
+    #crear categorias por edad
+    interval = (18,25,35,60, 120)
+    cats = ['Student', 'Young', 'Adult', 'Senior']
+    dataset['Age_cat'] = pd.cut(dataset.age, interval, labels=cats)
+
+    #reemplazar los valores nan
+    dataset['saving_accounts'] = dataset['saving_accounts'].fillna('no_inf')
+    dataset['checking account'] = dataset['checking account'].fillna('no_inf')
+
+    #convertir a dummies las variables categoricas
+    dataset = dataset.merge(pd.get_dummies(dataset.purpose, drop_first=True, prefix='purpose'), left_index=True, right_index=True)
+
+
+    #aplicar dummies
+    dataset = dataset.merge(pd.get_dummies(dataset.sex, prefix='Sex'), left_index=True, right_index=True)
+    dataset = dataset.merge(pd.get_dummies(dataset.housing, drop_first=True, prefix='Housing'), left_index=True, right_index=True)
+    dataset = dataset.merge(pd.get_dummies(dataset["saving_accounts"], drop_first=True, prefix='Savings'), left_index=True, right_index=True)
+    dataset = dataset.merge(pd.get_dummies(dataset.risk, prefix='Risk'), left_index=True, right_index=True)
+    dataset = dataset.merge(pd.get_dummies(dataset["checking account"], drop_first=True, prefix='Check'), left_index=True, right_index=True)
+    dataset = dataset.merge(pd.get_dummies(dataset["Age_cat"], prefix='Age_cat'), left_index=True, right_index=True)
+
+    #eliminar las variables anteriores
+    del dataset["Unnamed: 0"]
+    del dataset["saving_accounts"]
+    del dataset["checking account"]
+    del dataset["purpose"]
+    del dataset["sex"]
+    del dataset["housing"]
+    del dataset["Age_cat"]
+    del dataset["risk"]
+    del dataset["Risk_good"]
+    return dataset    
 
 #writing simple text 
 
@@ -208,7 +250,10 @@ if "Feature Engineering" in selected_page:
     st.write("""
     ## Feature Engineering
     New datset""")
-
+    if uploaded_file is not None:
+        dataset = feature_engineering(dataset)
+        st.write(dataset)
+        
 if "Modelado" in selected_page:
     st.write("""
     ## Entrenamiento con diferentes modelos
