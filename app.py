@@ -2,13 +2,11 @@ import streamlit as st
 import numpy as np 
 import pandas as pd
 import plotly.offline as py 
-#py.init_notebook_mode(connected=True) # this code, allow us to work with offline plotly version
-import plotly.graph_objs as go # it's like "plt" of matplot
-import plotly.tools as tls # It's useful to we get some tools of plotly
-#import matplotlib.pyplot as plt
-#import seaborn as sns
-#librerias de modelado
-from sklearn.model_selection import train_test_split
+import plotly.graph_objs as go 
+import plotly.tools as tls 
+
+# librerias de modelado
+from sklearn.model_selection import train_test_split, KFold, cross_val_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.neighbors import KNeighborsClassifier
@@ -16,325 +14,327 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
-#from xgboost import XGBClassifier
-#from lightgbm import LGBMClassifier
-from sklearn.model_selection import KFold,cross_val_score
-from sklearn.metrics import roc_curve, auc, roc_auc_score
-from sklearn.metrics import accuracy_score, confusion_matrix, fbeta_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report
 
-#definir funciones
+# librerias de redes neuronales
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.utils import to_categorical
+import tensorflow as tf
+
+# Configuración inicial de Streamlit
+st.set_page_config(layout="wide", page_title="Credit Card App")
+
+
+# --- Funciones de Análisis y Preparación de Datos ---
+
 def get_eda(dataset):
-    # Distribución de Creditos por Tipo de Casa
-    trace0 = go.Bar(
-        x=dataset[dataset["risk"] == 'good']["housing"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'good']["housing"].value_counts().values,
-        name='Good credit'
-    )
+    """Genera y muestra gráficos de distribución para variables clave."""
+    st.subheader("Distribuciones de Variables Clave")
 
-    trace1 = go.Bar(
-        x=dataset[dataset["risk"] == 'bad']["housing"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'bad']["housing"].value_counts().values,
-        name="Bad Credit"
-    )
+    # Lista de columnas a graficar
+    cols_to_plot = {
+        "housing": "Housing Distribution",
+        "sex": "Gender Distribution",
+        "job": "Job Distribution",
+        "saving_accounts": "Saving Accounts Distribution",
+        "checking account": "Checking Account Distribution",
+        "duration": "Duration Distribution (Months)",
+        "purpose": "Purpose Distribution"
+    }
 
-    data = [trace0, trace1]
+    for col, title in cols_to_plot.items():
+        if col not in dataset.columns:
+            st.warning(f"La columna '{col}' no está presente en el dataset.")
+            continue
+            
+        # Distribución de Creditos por Columna
+        trace0 = go.Bar(
+            x=dataset[dataset["risk"] == 'good'][col].value_counts().index.values,
+            y=dataset[dataset["risk"] == 'good'][col].value_counts().values,
+            name='Good credit'
+        )
 
-    layout = go.Layout(
-        title='Housing Distribution'
-    )
+        trace1 = go.Bar(
+            x=dataset[dataset["risk"] == 'bad'][col].value_counts().index.values,
+            y=dataset[dataset["risk"] == 'bad'][col].value_counts().values,
+            name="Bad Credit"
+        )
 
-    fig = go.Figure(data=data, layout=layout)
+        data = [trace0, trace1]
 
-    st.plotly_chart(fig)
-
-    # Distribución de Creditos por Genero
-    trace0 = go.Bar(
-        x=dataset[dataset["risk"] == 'good']["sex"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'good']["sex"].value_counts().values,
-        name='Good credit'
-    )
-
-    trace1 = go.Bar(
-        x=dataset[dataset["risk"] == 'bad']["sex"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'bad']["sex"].value_counts().values,
-        name="Bad Credit"
-    )
-
-    data = [trace0, trace1]
-
-    layout = go.Layout(
-        title='Gender Distribution'
-    )
-
-    fig = go.Figure(data=data, layout=layout)
-
-    st.plotly_chart(fig)
-
-    # Distribución de Creditos por Job
-    trace0 = go.Bar(
-        x=dataset[dataset["risk"] == 'good']["job"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'good']["job"].value_counts().values,
-        name='Good credit'
-    )
-
-    trace1 = go.Bar(
-        x=dataset[dataset["risk"] == 'bad']["job"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'bad']["job"].value_counts().values,
-        name="Bad Credit"
-    )
-
-    data = [trace0, trace1]
-
-    layout = go.Layout(
-        title='Job Distribution'
-    )
-
-    fig = go.Figure(data=data, layout=layout)
-
-    st.plotly_chart(fig)
-
-    # Distribución de Creditos por Cuentas de ahorro
-    trace0 = go.Bar(
-        x=dataset[dataset["risk"] == 'good']["saving_accounts"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'good']["saving_accounts"].value_counts().values,
-        name='Good credit'
-    )
-
-    trace1 = go.Bar(
-        x=dataset[dataset["risk"] == 'bad']["saving_accounts"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'bad']["saving_accounts"].value_counts().values,
-        name="Bad Credit"
-    )
-
-    data = [trace0, trace1]
-
-    layout = go.Layout(
-        title='Saving Accounts Distribution'
-    )
-
-    fig = go.Figure(data=data, layout=layout)
-
-    st.plotly_chart(fig)
-
-
-    # Distribución de Creditos por Cuentas de Crédiro
-    trace0 = go.Bar(
-        x=dataset[dataset["risk"] == 'good']["checking account"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'good']["checking account"].value_counts().values,
-        name='Good credit'
-    )
-
-    trace1 = go.Bar(
-        x=dataset[dataset["risk"] == 'bad']["checking account"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'bad']["checking account"].value_counts().values,
-        name="Bad Credit"
-    )
-
-    data = [trace0, trace1]
-
-    layout = go.Layout(
-        title='Checking Account Distribution'
-    )
-
-    fig = go.Figure(data=data, layout=layout)
-
-    st.plotly_chart(fig)
-
-    # Distribución de Creditos por duración
-    trace0 = go.Bar(
-        x=dataset[dataset["risk"] == 'good']["duration"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'good']["duration"].value_counts().values,
-        name='Good credit'
-    )
-
-    trace1 = go.Bar(
-        x=dataset[dataset["risk"] == 'bad']["duration"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'bad']["duration"].value_counts().values,
-        name="Bad Credit"
-    )
-
-    data = [trace0, trace1]
-
-    layout = go.Layout(
-        title='Duration Distribution'
-    )
-
-    fig = go.Figure(data=data, layout=layout)   
-    st.plotly_chart(fig)
-    
-    # Distribución de Creditos por Propósito
-    trace0 = go.Bar(
-        x=dataset[dataset["risk"] == 'good']["purpose"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'good']["purpose"].value_counts().values,
-        name='Good credit'
-    )
-
-    trace1 = go.Bar(
-        x=dataset[dataset["risk"] == 'bad']["purpose"].value_counts().index.values,
-        y=dataset[dataset["risk"] == 'bad']["purpose"].value_counts().values,
-        name="Bad Credit"
-    )
-
-    data = [trace0, trace1]
-
-    layout = go.Layout(
-        title='Purpose Distribution'
-    )
-
-    fig = go.Figure(data=data, layout=layout)
-
-    st.plotly_chart(fig)
-
-#crear una funcion para aplicar dummies 
-def one_hot_encoder(df, nan_as_category = False):
-    original_columns = list(df.columns)
-    categorical_columns = [col for col in df.columns if df[col].dtype == 'object']
-    df = pd.get_dummies(df, columns= categorical_columns, dummy_na= nan_as_category, drop_first=True)
-    new_columns = [c for c in df.columns if c not in original_columns]
-    return df, new_columns
+        layout = go.Layout(title=title)
+        fig = go.Figure(data=data, layout=layout)
+        st.plotly_chart(fig, use_container_width=True)
 
 
 def feature_engineering(dataset):
-    #crear categorias por edad
-    interval = (18,25,35,60, 120)
+    """Aplica ingeniería de características y codificación One-Hot."""
+    
+    # Usar una copia para evitar SettingWithCopyWarning
+    df = dataset.copy()
+
+    # crear categorias por edad
+    interval = (18, 25, 35, 60, 120)
     cats = ['Student', 'Young', 'Adult', 'Senior']
-    dataset['Age_cat'] = pd.cut(dataset.age, interval, labels=cats)
+    df['Age_cat'] = pd.cut(df.age, interval, labels=cats, right=False)
 
-    #reemplazar los valores nan
-    dataset['saving_accounts'] = dataset['saving_accounts'].fillna('no_inf')
-    dataset['checking account'] = dataset['checking account'].fillna('no_inf')
+    # reemplazar los valores nan
+    df['saving_accounts'] = df['saving_accounts'].fillna('no_inf')
+    df['checking account'] = df['checking account'].fillna('no_inf')
 
-    #convertir a dummies las variables categoricas
-    dataset = dataset.merge(pd.get_dummies(dataset.purpose, drop_first=True, prefix='purpose'), left_index=True, right_index=True)
+    # convertir a dummies las variables categoricas
+    df = df.merge(pd.get_dummies(df.purpose, drop_first=True, prefix='purpose'), left_index=True, right_index=True)
+    df = df.merge(pd.get_dummies(df.sex, drop_first=True, prefix='Sex'), left_index=True, right_index=True)
+    df = df.merge(pd.get_dummies(df.housing, drop_first=True, prefix='Housing'), left_index=True, right_index=True)
+    df = df.merge(pd.get_dummies(df["saving_accounts"], drop_first=True, prefix='Savings'), left_index=True, right_index=True)
+    df = df.merge(pd.get_dummies(df.risk, prefix='Risk'), left_index=True, right_index=True)
+    df = df.merge(pd.get_dummies(df["checking account"], drop_first=True, prefix='Check'), left_index=True, right_index=True)
+    df = df.merge(pd.get_dummies(df["Age_cat"], drop_first=True, prefix='Age_cat'), left_index=True, right_index=True)
+    
+    # Asegurar que las columnas existan antes de eliminarlas
+    cols_to_drop = ["Unnamed: 0", "saving_accounts", "checking account", "purpose", "sex", 
+                    "housing", "Age_cat", "risk"]
+    
+    for col in cols_to_drop:
+        if col in df.columns:
+            del df[col]
 
+    # La columna 'Risk_good' será redundante ya que 'Risk_bad' es la variable objetivo
+    if "Risk_good" in df.columns:
+        del df["Risk_good"]
 
-    #aplicar dummies
-    dataset = dataset.merge(pd.get_dummies(dataset.sex, prefix='Sex'), left_index=True, right_index=True)
-    dataset = dataset.merge(pd.get_dummies(dataset.housing, drop_first=True, prefix='Housing'), left_index=True, right_index=True)
-    dataset = dataset.merge(pd.get_dummies(dataset["saving_accounts"], drop_first=True, prefix='Savings'), left_index=True, right_index=True)
-    dataset = dataset.merge(pd.get_dummies(dataset.risk, prefix='Risk'), left_index=True, right_index=True)
-    dataset = dataset.merge(pd.get_dummies(dataset["checking account"], drop_first=True, prefix='Check'), left_index=True, right_index=True)
-    dataset = dataset.merge(pd.get_dummies(dataset["Age_cat"], prefix='Age_cat'), left_index=True, right_index=True)
+    return df
 
-    #eliminar las variables anteriores
-    del dataset["Unnamed: 0"]
-    del dataset["saving_accounts"]
-    del dataset["checking account"]
-    del dataset["purpose"]
-    del dataset["sex"]
-    del dataset["housing"]
-    del dataset["Age_cat"]
-    del dataset["risk"]
-    del dataset["Risk_good"]
-    return dataset    
 
 def modelling(dataset):
-    #aplicamos una funcion logaritmo para ajustar los valores
-    dataset['credit amount'] = np.log(dataset['credit amount'])
+    """Entrena modelos clásicos y realiza validación cruzada."""
+    df = dataset.copy()
+    
+    # aplicamos una funcion logaritmo para ajustar los valores
+    df['credit amount'] = np.log(df['credit amount'])
 
     # separamos la variable objetivo (y) de las variables predictoras (X)
-    X = dataset.drop('Risk_bad', axis=1).values
-    y = dataset['Risk_bad'].values
+    X = df.drop('Risk_bad', axis=1).values
+    y = df['Risk_bad'].values
     
     # Spliting X and y into train and test version
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.30, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=42)
 
     # Prepapar los modelos
-    #arreglo para almacenar los modelos
     models = []
-    #agregamos cada uno de los métodos
-    models.append(('LGR', LogisticRegression()))
+    models.append(('LGR', LogisticRegression(max_iter=500)))
     models.append(('LDA', LinearDiscriminantAnalysis()))
     models.append(('KNN', KNeighborsClassifier()))
     models.append(('CART', DecisionTreeClassifier()))
     models.append(('NB', GaussianNB()))
-    models.append(('RF', RandomForestClassifier()))
-    models.append(('SVM', SVC(gamma='auto')))
-    #models.append(('XGBM', XGBClassifier()))
-    #models.append(('LGBM', LGBMClassifier()))
+    models.append(('RF', RandomForestClassifier(random_state=42)))
+    models.append(('SVM', SVC(gamma='auto', random_state=42)))
 
     # Entrenamos y validamos cada modelo
-    # arreglo para analizar los resultados
     results = []
     names = []
-    scoring = 'recall'
+    scoring = 'recall' # Usando recall como métrica de evaluación
 
+    st.subheader("Resultados de Validación Cruzada (Métrica: Recall)")
     for name, model in models:
-            kfold = KFold(n_splits=10, random_state=None)
+        with st.spinner(f"Entrenando {name}..."):
+            kfold = KFold(n_splits=10, random_state=None, shuffle=True)
             cv_results = cross_val_score(model, X_train, y_train, cv=kfold, scoring=scoring)
             results.append(cv_results)
             names.append(name)
-    #crear dataset de resultados
-    resultsDF = pd.DataFrame (results, columns = ['V0','V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9'])
+            st.write(f"**{name}:** Media={cv_results.mean():.4f}, Desv.Std.={cv_results.std():.4f}")
+
+    # Graficar resultados (BoxPlot)
+    resultsBox = pd.DataFrame(np.array(results).T, columns=names)
     
-    resultsBox = pd.DataFrame (results, columns = ['V0','V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9'])
-    resultsDF['Model'] = names
-    #graficar resultados
     fig = go.Figure()
-    for i in range(7):
-        fig.add_trace(go.Box(y=resultsBox[i:i+1].to_numpy()[0], name=names[i] ))
-    st.plotly_chart(fig)
+    for name in names:
+        fig.add_trace(go.Box(y=resultsBox[name], name=name))
+    
+    fig.update_layout(title_text='Comparación de Modelos por Recall', yaxis_title='Recall Score')
+    st.plotly_chart(fig, use_container_width=True)
+    
     return X_train, X_test, y_train, y_test
 
 
-#writing simple text 
+# --- Funciones de Redes Neuronales ---
+
+def nn_model(learning_rate, y_train_categorical, X_train):
+    """Define la arquitectura de la Red Neuronal."""
+    NN_model = Sequential()
+
+    # The Input Layer :
+    NN_model.add(Dense(128, kernel_initializer='normal', input_dim=X_train.shape[1], activation='relu', dtype='float32'))
+
+    # The Hidden Layers :
+    NN_model.add(Dense(256, kernel_initializer='normal', activation='relu', dtype='float32'))
+    NN_model.add(Dense(256, kernel_initializer='normal', activation='relu', dtype='float32'))
+    NN_model.add(Dense(256, kernel_initializer='normal', activation='relu', dtype='float32'))
+
+    # The Output Layer :
+    # La salida tiene 2 neuronas (una para good, otra para bad) con activación sigmoid
+    NN_model.add(Dense(2, kernel_initializer='normal', activation='sigmoid', dtype='float32'))
+
+    # Compile the network :
+    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+    # Se usa 'binary_crossentropy' aunque la salida sea 2 clases, debido al uso de 'sigmoid' y el one-hot encoding.
+    NN_model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+    
+    st.text("Resumen del Modelo de Red Neuronal:")
+    NN_model.summary(print_fn=lambda x: st.text(x))
+    
+    return NN_model
+
+def TrainningNN(X_train, X_test, y_train, y_test):
+    """Entrena la Red Neuronal y evalúa los resultados."""
+    
+    # 1. Preparación de Datos
+    # Convertir X_train a numpy array de tipo float32 (¡La clave para el error!)
+    # Esto asegura la compatibilidad con Keras/TensorFlow.
+    X_train = np.array(X_train, dtype=np.float32)
+    X_test = np.array(X_test, dtype=np.float32)
+    
+    # Convertir las etiquetas a formato categórico (One-Hot Encoding)
+    y_test_categorical = to_categorical(y_test, num_classes=2)
+    y_train_categorical = to_categorical(y_train, num_classes=2)
+
+    # Semilla para aleatorios
+    np.random.seed(7)
+
+    # 2. Definición y Entrenamiento
+    NN_model = nn_model(1e-4, y_train_categorical, X_train)
+    nb_epochs = 100
+    batch_size = 50
+    
+    with st.spinner(f"Entrenando Red Neuronal por {nb_epochs} épocas..."):
+        # verbose=0 para suprimir la salida durante el entrenamiento en Streamlit
+        history = NN_model.fit(
+            X_train, y_train_categorical, 
+            epochs=nb_epochs, 
+            batch_size=batch_size, 
+            verbose=0,
+            validation_data=(X_test, y_test_categorical)
+        )
+    
+    st.success(f"✅ Entrenamiento de la Red Neuronal finalizado después de {nb_epochs} épocas.")
+
+    # 3. Evaluación
+    # Predicción de probabilidades (ej: [0.9, 0.1] para clase 0)
+    y_pred_nn_prob = NN_model.predict(X_test, verbose=0)
+    # Convertir probabilidades a la clase predicha (0 o 1)
+    y_pred_nn = np.argmax(y_pred_nn_prob, axis=1)
+
+    # Métricas de Evaluación
+    accuracy = accuracy_score(y_test, y_pred_nn)
+    report = classification_report(y_test, y_pred_nn, output_dict=True, zero_division=0)
+
+    st.subheader("Evaluación del Modelo de Red Neuronal")
+    st.metric(label="Accuracy", value=f"{accuracy:.4f}")
+    
+    st.markdown("**Reporte de Clasificación:**")
+    st.dataframe(pd.DataFrame(report).transpose().round(2))
+    
+    return NN_model
+
+
+# --- Aplicación Principal de Streamlit ---
 
 st.title("Credit Card App")
 
-    
-# ============ Aplicación Principal  ============
-        
+# Inicialización de Session State para persistir datos
+if 'dataset' not in st.session_state:
+    st.session_state['dataset'] = None
+if 'X_train' not in st.session_state:
+    st.session_state['X_train'] = None
+
+
 # Definir las opciones de página
 pages = ["Cargar Datos", "Explorar Datos", "Feature Engineering", "Modelado", "Neural Network", "Prediccion"]
-
 
 # Mostrar un menú para seleccionar la página
 selected_page = st.sidebar.multiselect("Seleccione una página", pages)
 
 # Condicionales para mostrar la página seleccionada
 if "Cargar Datos" in selected_page:
-    st.write("""
-    ## Cargar Datos""")
+    st.header("Cargar Datos")
     # Cargar archivo CSV usando file uploader
     uploaded_file = st.file_uploader("Cargar archivo CSV", type=["csv"])
+    
     # Si el archivo se cargó correctamente
     if uploaded_file is not None:
-    # Leer archivo CSV usando Pandas
-        dataset = pd.read_csv(uploaded_file)
-    # Mostrar datos en una tabla
-        st.write(dataset)
+        # Leer archivo CSV usando Pandas y almacenarlo en session_state
+        st.session_state['dataset'] = pd.read_csv(uploaded_file)
+        st.subheader("Vista Previa de Datos Originales")
+        st.dataframe(st.session_state['dataset'].head())
+    elif st.session_state['dataset'] is not None:
+        st.subheader("Datos Cargados Previamente")
+        st.dataframe(st.session_state['dataset'].head())
 
 if "Explorar Datos" in selected_page:
-    st.write("""
-    ## Explore Data
-    Distributions""")
-    if uploaded_file is not None:
-        get_eda(dataset)
-        
+    if st.session_state['dataset'] is not None:
+        st.header("Explorar Datos")
+        # Usar una copia para el EDA para no modificar el original
+        get_eda(st.session_state['dataset'].copy())
+    else:
+        st.warning("⚠️ Por favor, cargue los datos en la sección 'Cargar Datos' primero.")
+
 if "Feature Engineering" in selected_page:
-    st.write("""
-    ## Feature Engineering
-    New datset""")
-    if uploaded_file is not None:
-        dataset = feature_engineering(dataset)
-        st.write(dataset)
+    if st.session_state['dataset'] is not None:
+        st.header("Feature Engineering")
+        st.write("Aplicando transformaciones y codificación One-Hot...")
         
+        # Aplicar Feature Engineering y actualizar el dataset en session_state
+        processed_dataset = feature_engineering(st.session_state['dataset'].copy())
+        st.session_state['dataset_processed'] = processed_dataset
+        
+        st.subheader("Dataset Procesado (Variables One-Hot)")
+        st.dataframe(processed_dataset.head())
+        st.write(f"Shape del Dataset Procesado: {processed_dataset.shape}")
+    else:
+        st.warning("⚠️ Por favor, cargue los datos y ejecute 'Cargar Datos' primero.")
+
 if "Modelado" in selected_page:
-    st.write("""
-    ## Entrenamiento con diferentes modelos
-    Resultados""")
-    if uploaded_file is not None:
-        X_train, X_test, y_train, y_test = modelling(dataset)
-
+    if 'dataset_processed' in st.session_state and st.session_state['dataset_processed'] is not None:
+        st.header("Entrenamiento con Modelos Clásicos")
         
+        X_train, X_test, y_train, y_test = modelling(st.session_state['dataset_processed'].copy())
+        
+        # Almacenar los splits de datos en session_state
+        st.session_state['X_train'] = X_train
+        st.session_state['X_test'] = X_test
+        st.session_state['y_train'] = y_train
+        st.session_state['y_test'] = y_test
+        
+        st.success("✅ Splits de datos de entrenamiento y prueba almacenados para la Red Neuronal.")
+
+    else:
+        st.warning("⚠️ Por favor, ejecute los pasos 'Cargar Datos' y 'Feature Engineering' primero.")
+
 if "Neural Network" in selected_page:
-    st.write("""
-    ## Neural Network
-    Resultados""")
-
+    st.header("Neural Network")
+    
+    if st.session_state['X_train'] is not None:
+        st.write(f"TensorFlow Version: {tf.__version__}")
         
+        # Recuperar los datos de session_state
+        X_train = st.session_state['X_train']
+        X_test = st.session_state['X_test']
+        y_train = st.session_state['y_train']
+        y_test = st.session_state['y_test']
+        
+        # Llamar a la función con las correcciones de dtype
+        modelNN = TrainningNN(X_train, X_test, y_train, y_test)
+        st.session_state['NN_model'] = modelNN
+        
+    else:
+        st.warning("⚠️ Por favor, ejecute el paso **Modelado** primero para preparar los datos de entrenamiento.")
+
 if "Prediccion" in selected_page:
-    st.write("""
-    ## Predicción de un Crédito
-    Capture los datos""")
- 
+    if 'NN_model' in st.session_state and st.session_state['NN_model'] is not None:
+        st.header("Prediccion (Usando el Modelo NN)")
+        st.info("Aquí iría la interfaz de usuario para ingresar nuevos datos y obtener una predicción del riesgo de crédito.")
+        # Se podría implementar la lógica de predicción aquí.
+    else:
+        st.warning("⚠️ Por favor, entrene la Red Neuronal en la sección 'Neural Network' primero.")
