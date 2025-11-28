@@ -5,6 +5,22 @@ import plotly.offline as py
 #py.init_notebook_mode(connected=True) # this code, allow us to work with offline plotly version
 import plotly.graph_objs as go # it's like "plt" of matplot
 import plotly.tools as tls # It's useful to we get some tools of plotly
+#import matplotlib.pyplot as plt
+#import seaborn as sns
+#librerias de modelado
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+#from xgboost import XGBClassifier
+#from lightgbm import LGBMClassifier
+from sklearn.model_selection import KFold,cross_val_score
+from sklearn.metrics import roc_curve, auc, roc_auc_score
+from sklearn.metrics import accuracy_score, confusion_matrix, fbeta_score, classification_report
 
 #definir funciones
 def get_eda(dataset):
@@ -212,6 +228,55 @@ def feature_engineering(dataset):
     del dataset["Risk_good"]
     return dataset    
 
+def modelling(dataset):
+    #aplicamos una funcion logaritmo para ajustar los valores
+    dataset['credit amount'] = np.log(dataset['credit amount'])
+
+    # separamos la variable objetivo (y) de las variables predictoras (X)
+    X = dataset.drop('Risk_bad', axis=1).values
+    y = dataset['Risk_bad'].values
+    
+    # Spliting X and y into train and test version
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.30, random_state=42)
+
+    # Prepapar los modelos
+    #arreglo para almacenar los modelos
+    models = []
+    #agregamos cada uno de los métodos
+    models.append(('LGR', LogisticRegression()))
+    models.append(('LDA', LinearDiscriminantAnalysis()))
+    models.append(('KNN', KNeighborsClassifier()))
+    models.append(('CART', DecisionTreeClassifier()))
+    models.append(('NB', GaussianNB()))
+    models.append(('RF', RandomForestClassifier()))
+    models.append(('SVM', SVC(gamma='auto')))
+    #models.append(('XGBM', XGBClassifier()))
+    #models.append(('LGBM', LGBMClassifier()))
+
+    # Entrenamos y validamos cada modelo
+    # arreglo para analizar los resultados
+    results = []
+    names = []
+    scoring = 'recall'
+
+    for name, model in models:
+            kfold = KFold(n_splits=10, random_state=None)
+            cv_results = cross_val_score(model, X_train, y_train, cv=kfold, scoring=scoring)
+            results.append(cv_results)
+            names.append(name)
+    #crear dataset de resultados
+    resultsDF = pd.DataFrame (results, columns = ['V0','V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9'])
+    
+    resultsBox = pd.DataFrame (results, columns = ['V0','V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9'])
+    resultsDF['Model'] = names
+    #graficar resultados
+    fig = go.Figure()
+    for i in range(7):
+        fig.add_trace(go.Box(y=resultsBox[i:i+1].to_numpy()[0], name=names[i] ))
+    st.plotly_chart(fig)
+    return X_train, X_test, y_train, y_test
+
+
 #writing simple text 
 
 st.title("Credit Card App")
@@ -258,6 +323,8 @@ if "Modelado" in selected_page:
     st.write("""
     ## Entrenamiento con diferentes modelos
     Resultados""")
+    if uploaded_file is not None:
+        X_train, X_test, y_train, y_test = modelling(dataset)
 
         
 if "Neural Network" in selected_page:
