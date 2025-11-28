@@ -238,6 +238,209 @@ def TrainningNN(X_train, X_test, y_train, y_test):
     
     return NN_model
 
+def predictionForm(modelNN):
+    option_sex = ['male', 'female']
+    option_job = [0,1,2,3]
+    option_housing = ['own', 'rent']
+    option_saving = ['moderate', 'quite rich', 'rich','little']
+    option_checking = ['moderate', 'rich','little']
+    option_duration = [6,7,8,9,10,11,12,15,18,24,27,30,36,42,45,48,60]
+    option_purpose = ['radio/TV', 'education', 'furniture/equipment', 'car',
+       'domestic appliances', 'repairs', 'vacation/others']
+
+    age = st.text_input('Edad')
+    select_sex = st.selectbox('Género', option_sex)
+    select_job = st.selectbox('Trabajo', option_job)
+    select_housing = st.selectbox('Vivienda', option_housing)
+    select_saving = st.selectbox('Cuenta de Ahorro', option_saving)
+    select_checking = st.selectbox('Cuenta de Crédito', option_checking)
+    credit_amount = st.text_input('Monto del Crédito')
+    select_duration = st.selectbox('Duración', option_duration)
+    select_purpose = st.selectbox('Propósito', option_purpose)
+
+    if st.button('Enviar'):
+        prediction(age,select_sex,select_job,select_housing,select_saving,select_checking,credit_amount, select_duration, select_purpose)    
+    
+def prediction(age,sex,job,housing,saving,checking,amount,duration,purpose):
+    # Crear dataframe
+    data = {
+        "age": [age], 
+        "sex": [sex], 
+        "job": [job],
+        "housing": [housing], 
+        "saving_accounts": [saving],
+        "checking_account": [checking], 
+        "credit_amount": [amount], 
+        "duration": [duration], 
+        "purpose": [purpose]
+    }
+
+    dataset = pd.DataFrame(data)
+    datasetNew = dataset.copy()
+
+
+    # ============ featuring para el dataset a predecir  ============
+    
+    #asignar categorias por edad
+    if int(age) >= 18 and int(age) <= 25:
+        Age_cat='Student'
+    elif int(age) >= 28 and int(age) <= 35:
+        Age_cat='Young'
+    elif int(age) >= 35 and int(age) <= 60:
+        Age_cat='Adult'
+    else:
+        Age_cat='Senior'
+    datasetNew['Age_cat'] = Age_cat
+    
+  #asignar el proposito del crédito
+    purpose_car=0
+    purpose_domestic=0
+    purpose_education=0
+    purpose_furniture=0
+    purpose_radio=0
+    purpose_repairs=0
+    purpose_vacation=0
+    if purpose ==  "radio/TV":
+        purpose_radio = 1
+    elif purpose ==  "education":
+        purpose_education = 1
+    elif purpose ==  "furniture/equipment":
+        purpose_furniture = 1
+    elif purpose ==  "car":
+        purpose_car = 1
+    elif purpose ==  "vacation/others":
+        purpose_vacation = 1
+    elif purpose ==  "domestic appliances":
+        purpose_domestic = 1
+    else:
+        purpose_repairs = 1
+    dataPurpose = {
+        "purpose_car":[purpose_car],
+        "purpose_domestic appliances":[purpose_domestic], 
+        "purpose_education":[purpose_education],
+        "purpose_furniture/equipment":[purpose_furniture], 
+        "purpose_radio/TV":[purpose_radio], 
+        "purpose_repairs":[purpose_repairs],
+        "purpose_vacation/others":[purpose_vacation]
+    }
+    dataPurpose = pd.DataFrame(dataPurpose)
+    datasetNew = pd.concat([datasetNew, dataPurpose], axis=1)  
+    
+    #asignar genero
+    Sex_female=0
+    Sex_male=0
+    if sex == "female":
+        Sex_female=1
+    else:
+        Sex_male=1
+    dataGender = {
+        "Sex_female":[Sex_female],
+        "Sex_male":[Sex_male]
+    }    
+    dataGender = pd.DataFrame(dataGender)
+    datasetNew = pd.concat([datasetNew, dataGender], axis=1)
+    
+    #asignar vivienda
+    Housing_own=0
+    Housing_rent=0
+    if housing == "own":
+        Housing_own=1
+    else:
+        Housing_rent=1
+    dataHousing = {
+        "Housing_own":[Housing_own],
+        "Housing_rent":[Housing_rent]
+    }    
+    dataHousing = pd.DataFrame(dataHousing)
+    datasetNew = pd.concat([datasetNew, dataHousing], axis=1)
+
+    #asignar Cuenta de Ahorros
+    Savings_moderate=0
+    Savings_no_inf=0
+    Savings_quite=0 
+    Savings_rich=0
+    if saving == "moderate":
+        Savings_moderate=1
+    elif saving == "quite rich":
+        Savings_quite=1
+    elif saving == "rich":
+        Savings_rich=1
+    else:
+        Savings_no_inf=1
+    dataSaving = {
+        "Savings_moderate":[Savings_moderate],
+        "Savings_no_inf":[Savings_no_inf],
+        "Savings_quite rich":[Savings_quite],
+        "Savings_rich":[Savings_rich]
+    }    
+    dataSaving = pd.DataFrame(dataSaving)
+    datasetNew = pd.concat([datasetNew, dataSaving], axis=1)   
+  
+    #asignar Cuenta de Credito 
+    Check_moderate=0
+    Check_no_inf=0 
+    Check_rich=0
+    if checking == "moderate":
+        Check_moderate=1
+    elif checking == "rich":
+        Check_rich=1
+    else:
+        Check_no_inf=1
+    dataChecking = {
+        "Check_moderate":[Check_moderate],
+        "Check_no_inf":[Check_no_inf],
+        "Check_rich":[Check_rich]
+    }    
+    dataChecking = pd.DataFrame(dataChecking)
+    datasetNew = pd.concat([datasetNew, dataChecking], axis=1)   
+
+    #asignar categoria edad 
+    Age_cat_Student=0
+    Age_cat_Young=0
+    Age_cat_Adult=0
+    Age_cat_Senior=0
+    if Age_cat == "Student":
+        Age_cat_Student=1
+    elif Age_cat == "Young":
+        Age_cat_Young=1
+    elif Age_cat == "Adult":
+        Age_cat_Adult ==1
+    else:
+        Age_cat_Senior=1
+    dataCatAge = {
+        "Age_cat_Student":[Age_cat_Student], 
+        "Age_cat_Young":[Age_cat_Young],
+        "Age_cat_Adult":[Age_cat_Adult], 
+        "Age_cat_Senior":[Age_cat_Senior]
+    }    
+    dataCatAge = pd.DataFrame(dataCatAge)
+    datasetNew = pd.concat([datasetNew, dataCatAge], axis=1) 
+    #eliminar columnas 
+    del datasetNew["saving_accounts"]
+    del datasetNew["checking_account"]
+    del datasetNew["purpose"]
+    del datasetNew["sex"]
+    del datasetNew["housing"]
+    del datasetNew["Age_cat"]
+    #aplicamos una funcion logaritmo para ajustar los valores
+    datasetNew['credit_amount'] = np.log(int(datasetNew['credit_amount']))
+    #convertir variables a numpy
+    X_values = datasetNew.values
+    X_predict = X_values.astype(float)
+
+    # Mostrar prediccion
+    st.write("### Predicción del Crédito")
+    # Mostrar dataframe
+    st.write(dataset)
+    # Calcular Prediccion
+    valuePredict = modelNN.predict(X_predict)
+    st.write(valuePredict)
+    
+    if valuePredict[0][0] > valuePredict[0][1]:
+        st.write("#### Crédito Malo")
+    else:
+        st.write("#### Crédito Bueno")
+
 
 # --- Aplicación Principal de Streamlit ---
 
@@ -334,7 +537,6 @@ if "Neural Network" in selected_page:
 if "Prediccion" in selected_page:
     if 'NN_model' in st.session_state and st.session_state['NN_model'] is not None:
         st.header("Prediccion (Usando el Modelo NN)")
-        st.info("Aquí iría la interfaz de usuario para ingresar nuevos datos y obtener una predicción del riesgo de crédito.")
-        # Se podría implementar la lógica de predicción aquí.
+        predictionForm(modelNN)
     else:
         st.warning("⚠️ Por favor, entrene la Red Neuronal en la sección 'Neural Network' primero.")
